@@ -1,8 +1,8 @@
-// ConsoleApplication5.cpp: определяет точку входа для консольного приложения.
-// is not complete yet
-// Unpacker that unpacks Asura archives with special RSFL chunk. will unpack zlib, huffman, xmemcompr... etc...
+// RSFL unpacker
+//
 
 #include "stdafx.h"
+//#include "miniz.h" // For unpacking AsuraZlb Archives
 #pragma warning( disable: 4996 )
 
 //Defines
@@ -24,6 +24,17 @@ struct RSFL_entry
 	DWORD offset;
 	DWORD file_size;
 	DWORD unk;
+};
+
+struct RSCF_hdr
+{
+	DWORD magic;
+	DWORD size;
+	DWORD type1;
+	DWORD type2;
+	DWORD RSCF_type1;
+	DWORD RSCF_type2;
+	DWORD size_wo_hdr;
 };
 
 struct chunk_info
@@ -57,6 +68,11 @@ DWORD g_RSFL_count = 0;
 DWORD g_core_segment_addr = 0;
 char g_archive_file_name[260] = { 0 };
 char g_path[260] = { 0 };
+
+
+//For packing 
+HANDLE g_handle_for_pack;
+char g_folder_to_pack_path[260] = { 0 };
 
 int read_padded_str(HANDLE file, char* dest)
 {
@@ -109,7 +125,7 @@ bool TryCreateDirectory(char *path)
 
 bool Recource_have_name(DWORD magic)
 {
-
+	return false;
 }
 
 bool Unpack_Asura_arch(HANDLE f)
@@ -372,7 +388,201 @@ int decompose_func(char* f_name)
 	}
 }
 
+void Read_and_write_to_archive(const char* file_name)
+{
+	char file_path[MAX_PATH] = { 0 };
+	//sprintf(file_path, "%s\\", g_folder_to_pack_path);
+	strcat(file_path, file_name);
 
+	DWORD a = 0;
+	HANDLE f2 = g_handle_for_pack;
+
+	printf("file_name: %s\n", file_path);
+	HANDLE f = CreateFileA(file_path, GENERIC_READ, NULL, NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
+
+	if (GetLastError() != ERROR_SUCCESS)
+	{
+		printf("File open error: %d\n", GetLastError());
+		CloseHandle(f);
+		return;
+	}
+
+	DWORD sign = 0;
+	READ(sign);
+
+	if (sign != 'rusA')
+	{
+		if (sign == ' SDD') // graphics
+		{
+			const char* tmp = file_name + strlen(g_folder_to_pack_path); // to fix a path for files !!!!
+			DWORD size = GetFileSize(f, NULL);
+			DWORD real_str_len = strlen(tmp);
+			DWORD str_size = (strlen(tmp) & ~3) + 4;
+
+			RSCF_hdr hdr;
+			hdr.magic = (DWORD)'FCSR';
+			hdr.size_wo_hdr = size;
+			hdr.size = size + str_size + 28;
+			hdr.type1 = 0;
+			hdr.type2 = 0;
+			hdr.RSCF_type1 = 2;
+			hdr.RSCF_type2 = 0;
+
+			void* mem = malloc(size);
+			SFPS(0);
+			READP(mem, size);
+
+			WRITE(hdr);
+			WRITEP(tmp, real_str_len);
+			char null_char = 0;
+			for (int i = 0; i < str_size - real_str_len; i++)
+			{
+				WRITE(null_char);
+			}
+			WRITEP(mem, size);
+
+			free(mem);
+			CloseHandle(f);
+			return;
+		}
+		if (sign == 'FFIR') // sounds
+		{
+			const char* tmp = file_name + strlen(g_folder_to_pack_path);
+			DWORD size = GetFileSize(f, NULL);
+			DWORD real_str_len = strlen(tmp);
+			DWORD str_size = (strlen(tmp) & ~3) + 4;
+
+			RSCF_hdr hdr;
+			hdr.magic = (DWORD)'FCSR';
+			hdr.size_wo_hdr = size;
+			hdr.size = size + str_size + 28;
+			hdr.type1 = 0;
+			hdr.type2 = 0;
+			hdr.RSCF_type1 = 3;
+			hdr.RSCF_type2 = 0;
+
+			void* mem = malloc(size);
+			SFPS(0);
+			READP(mem, size);
+
+			WRITE(hdr);
+			WRITEP(tmp, real_str_len);
+			char null_char = 0;
+			for (int i = 0; i < str_size - real_str_len; i++)
+			{
+				WRITE(null_char);
+			}
+			WRITEP(mem, size);
+
+			free(mem);
+			CloseHandle(f);
+			return;
+		}
+
+		DWORD chunk_size = 0;
+		READ(chunk_size);
+		void* mem = malloc(chunk_size);
+		SFPS(0);
+
+		READP(mem, chunk_size);
+		WRITEP(mem, chunk_size);
+
+		free(mem);
+		CloseHandle(f);
+		return;
+	}
+	else
+	{
+		DWORD sign2 = 0;
+		READ(sign2);
+		if (sign2 == '   a')
+		{
+			// code
+			DWORD file_size = GetFileSize(f, NULL);
+			void* mem = malloc(file_size - 8 - 16);
+			SFPS(8);
+
+			READP(mem, file_size - 8 - 16);
+			WRITEP(mem, file_size - 8 - 16);
+
+			free(mem);
+			CloseHandle(f);
+
+			return;
+		}
+		CloseHandle(f);
+		return;
+	}
+}
+
+int Read_files_in_folder(const char* start_folder)
+{
+	char search_path[260] = { 0 };
+	strcpy(search_path, start_folder);
+	strcat(search_path, "*.*");
+	WIN32_FIND_DATAA FindFileData;
+	HANDLE hFind = FindFirstFileA(search_path, &FindFileData);
+	if (hFind == INVALID_HANDLE_VALUE) {
+		printf("FindFirstFile failed (%d)\n", GetLastError());
+		return 0;
+	}
+
+	do {
+		if (FindFileData.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY)
+		{
+			if (!strcmp(FindFileData.cFileName, ".") || !strcmp(FindFileData.cFileName, ".."))
+				continue;
+			char next_path[260] = { 0 };
+			strcpy(next_path, start_folder);
+			strcat(next_path, FindFileData.cFileName);
+			strcat(next_path, "\\");
+			Read_files_in_folder(next_path);
+		}
+		else
+		{
+			char path[260] = { 0 };
+			strcpy(path, start_folder);
+			strcat(path, FindFileData.cFileName);
+			Read_and_write_to_archive(path);
+		}
+	} while (FindNextFileA(hFind, &FindFileData) != 0);
+
+	FindClose(hFind);
+	return 1;
+}
+
+int Asura_pack(char* folder_name)
+{
+	strcpy(g_archive_file_name, folder_name);
+	strcat(g_archive_file_name, ".asr");
+
+	strcpy(g_folder_to_pack_path, folder_name);
+
+	DWORD a = 0;
+
+	HANDLE f2 = CreateFileA(g_archive_file_name, GENERIC_WRITE, NULL, NULL, OPEN_ALWAYS, FILE_ATTRIBUTE_NORMAL, NULL);
+	g_handle_for_pack = f2;
+
+	if ((GetLastError() != ERROR_SUCCESS) && (GetLastError() != ERROR_ALREADY_EXISTS))
+	{
+		printf("File create error: %d\n", GetLastError());
+		CloseHandle(f2);
+		return EXIT_FAILURE;
+	}
+
+	WRITEP("Asura   ", 8);
+	
+	char temp[260] = { 0 };
+	strcpy(temp, g_folder_to_pack_path);
+	strcat(temp, "\\");
+
+	Read_files_in_folder(temp);
+
+	WRITEP("\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0", 16);
+
+	CloseHandle(f2);
+	return EXIT_SUCCESS;
+}
 
 void Usage_func()
 {
@@ -411,7 +621,10 @@ int main(int argc, char** argv)
 	}
 	else if (!strcmp(argv[1], "pack"))
 	{
-
+		if (Asura_pack(argv[2]))
+		{
+			printf("Something went wrong at packing ! \n");
+		}
 	}
 	else
 	{
