@@ -1,4 +1,4 @@
-// RSFL unpacker
+// PACKER unpaker
 //
 
 #include "stdafx.h"
@@ -15,7 +15,10 @@
 #define READP(p, n) ReadFile(f, p, n, &a, NULL)
 #define WRITE(v) WriteFile(f2, &(v), sizeof(v), &a, NULL)
 #define WRITEP(p, n) WriteFile(f2, p, n, &a, NULL)
-
+#define BYTE0(dw) (dw & 0xFF)
+#define BYTE1(dw) ((dw & 0xFF00) >> 8)
+#define BYTE2(dw) ((dw & 0xFF0000) >> 16)
+#define BYTE3(dw) ((dw & 0xFF000000) >> 24)
 
 //Structs
 struct RSFL_entry
@@ -37,29 +40,64 @@ struct RSCF_hdr
 	DWORD size_wo_hdr;
 };
 
+struct chunk_hdr
+{
+	DWORD magic;
+	DWORD Size;
+	DWORD type1;
+	DWORD type2;
+};
+
 struct chunk_info
 {
 	DWORD magic;
 	bool has_name;
 	int offset_of_name;
+	bool check_type;
 	DWORD type1;
 	DWORD type2;
 };
 
+struct RSCF_type_ext
+{
+	DWORD type1;
+	DWORD type2;
+	const char ext_name[32];
+};
+
 //Globals
-chunk_info g_chunk_info[100] = {
-	{ 'FCSR', TRUE, 0x1C, 2, 0 },
-	{ 'CATC', TRUE, 0x18 },
-	{ 'TATC', TRUE, 0x14 },
-	{ 'FCSR', FALSE, 0x0 },
-	{ 'FCSR', FALSE, 0x0 },
-	{ 'FCSR', FALSE, 0x0 },
-	{ 'FCSR', FALSE, 0x0 },
-	{ 'FCSR', FALSE, 0x0 },
-	{ 'FCSR', FALSE, 0x0 },
-	{ 'FCSR', FALSE, 0x0 },
-	{ 'FCSR', FALSE, 0x0 },
-	{ 'FCSR', FALSE, 0x0 },
+
+const int g_amount_check_chunks = 8;
+
+chunk_info g_chunk_info[g_amount_check_chunks] = {
+	{ 'STUC', TRUE, 0x24, 1, 22, 0 },
+	{ 'VELD', TRUE, 0x10, 5, 0 },
+	{ 'NKSH', TRUE, 0x18, 0},
+	{ 'MNAH', TRUE, 0x18, 0},
+	{ 'TPMH', TRUE, 0x14, 0},
+	{ 'BBSH', TRUE, 0x10, 0},
+	{ 'LKSH', FALSE, 0x1C,0},
+	{ 'DNSH', FALSE, 0x14,1, 4, 1 },
+};
+
+
+// This is information from AVP2010
+
+const int g_amount_check_RSCF_types = 12;
+
+RSCF_type_ext RSCF_types[g_amount_check_RSCF_types] = {
+	{0, 4, "\0" },
+	{ 0, 6, "\0" },
+	{ 0, 7, ".carpet"},
+	{ 0, 8, ".botanicals" },
+	{ 0, 11, ".enviroment" },
+	{ 0, 12, ".mat_response" },
+	{ 0, 13, ".decals" },
+	{ 0, 14, ".shaders" },
+	{ 0, 15, ".model"},
+	{ 2, 0, "\0" }, // Image
+	{ 3, 0, "\0" }, // sound
+	{ 6, 0, "\0" }, // idk
 };
 
 RSFL_entry* g_RSFL_entries = nullptr;
@@ -117,16 +155,46 @@ bool TryCreateDirectory(char *path)
 		if (!(CreateDirectoryA(folder_name, NULL) || GetLastError() == ERROR_ALREADY_EXISTS))
 		{
 			printf("Error create subdirectory  %s \n", folder_name);
+			printf("Error: %d \n", GetLastError());
 			return false;
 		}
 	}
 	return true;
 }
 
-bool Recource_have_name(DWORD magic)
+int get_resource_name(chunk_hdr* hdr)
 {
-	return false;
+	for (int i = 0; i < g_amount_check_chunks; i++)
+	{
+		if (hdr->magic == g_chunk_info[i].magic)
+		{
+			if (g_chunk_info[i].check_type)
+			{
+				if ((hdr->type1 == g_chunk_info[i].type1) && (hdr->type2 == g_chunk_info[i].type2))
+					return g_chunk_info[i].offset_of_name;
+			}
+			else
+			{
+				return g_chunk_info[i].offset_of_name;
+			}
+		}
+	}
+	return 0;
 }
+
+
+const char* get_RSCF_ext(DWORD type1, DWORD type2)
+{
+	for (int i = 0; i < g_amount_check_RSCF_types; i++)
+	{
+		if ((RSCF_types[i].type1 == type1) && (RSCF_types[i].type2 == type2))
+		{
+			return (RSCF_types[i].ext_name);
+		}
+	}
+	return "\0";
+}
+
 
 bool Unpack_Asura_arch(HANDLE f)
 {
@@ -135,32 +203,129 @@ bool Unpack_Asura_arch(HANDLE f)
 	char Arch_magic[9] = "";
 	Arch_magic[8] = '\0';
 
+	char unpacked_folder[260] = { 0 };
+	strcpy(unpacked_folder, g_archive_file_name);
+	strcat(unpacked_folder, "_unpacked\\");
+	TryCreateDirectory(unpacked_folder);
+
+	char unpacked_file[260] = { 0 };
+
 	READP(Arch_magic, 8);
 
 	printf("Unpacking... \n");
 
+	UINT32 unnamed_chunk_count = 0;
+	char named_filled_name[260] = { 0 };
+
 	if (!strcmp(Arch_magic, "Asura   "))
 	{
-		struct chunk_hdr
-		{
-			DWORD magic;
-			DWORD Size;
-		};
+		
 
 		chunk_hdr hdr;
+		READ(hdr);
 
-		do
+		while (hdr.magic != NULL)
 		{
-			READ(hdr);
+			ZeroMemory(unpacked_file, 260);
+			DWORD file_pos_in_arch = SFPC(0) - sizeof(hdr);
 
-			if (Recource_have_name(hdr.magic))
+
+			if (hdr.magic == 'FCSR') // resource file need handle specially
 			{
+				DWORD RSCF_data_size;
+				DWORD RSCF_type1;
+				DWORD RSCF_type2;
+				READ(RSCF_type1);// RSCF_type1
+				READ(RSCF_type2);// RSCF_type2
+				READ(RSCF_data_size);// RSFC_size_wo_hdr
+				read_padded_str(f, named_filled_name); // Resource name
+				sprintf(unpacked_file, "%s%s%s", unpacked_folder, named_filled_name, get_RSCF_ext(RSCF_type1, RSCF_type2));
+				
+				//temp_fdn[1] = '\0';
+				char temp_fdn1[260] = { 0 };
+				strcpy(temp_fdn1, unpacked_file);
+				char* temp_fdn = strrchr(temp_fdn1, '\\');
 
+				if (temp_fdn) // contains path in name
+				{
+					temp_fdn[1] = '\0';
+					TryCreateDirectory(temp_fdn1);
+				}
+
+				HANDLE f2 = CreateFileA(unpacked_file, GENERIC_WRITE, NULL, NULL, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, NULL);
+
+				printf("%s \n", unpacked_file);
+
+				if ((GetLastError() != ERROR_SUCCESS) && (GetLastError() != ERROR_ALREADY_EXISTS))
+				{
+					printf("File create error: %d (%s)\n", GetLastError(), unpacked_file);
+					CloseHandle(f2);
+					return 1;
+				}
+
+				void* RSCF_data = malloc(RSCF_data_size);
+				READP(RSCF_data, RSCF_data_size);
+
+				WRITEP(RSCF_data, RSCF_data_size);
+
+				free(RSCF_data);
+				CloseHandle(f2);
+
+				READ(hdr);
+				continue;
 			}
 
-		} while (hdr.magic != NULL);
+			char chunk_ext[6] = { 0 };
+			sprintf(chunk_ext, ".%c%c%c%c", BYTE0(hdr.magic), BYTE1(hdr.magic), BYTE2(hdr.magic), BYTE3(hdr.magic));
 
-		
+			DWORD name_offset = get_resource_name(&hdr);
+
+			char chunk_dir[260] = { 0 };
+			strcpy(chunk_dir, unpacked_folder);
+			strcat(chunk_dir, chunk_ext + 1);
+			strcat(chunk_dir, "_chunk\\");
+
+			TryCreateDirectory(chunk_dir);
+
+			if (name_offset)
+			{
+				SFPC(name_offset - sizeof(hdr));
+				read_padded_str(f, named_filled_name);
+				strcat(named_filled_name, chunk_ext);
+				sprintf(unpacked_file, "%s%s", chunk_dir, named_filled_name);
+			}
+			else
+			{
+				sprintf(named_filled_name, "%d", unnamed_chunk_count);
+				strcat(named_filled_name, chunk_ext);
+				sprintf(unpacked_file, "%s%s", chunk_dir, named_filled_name);
+				unnamed_chunk_count++;
+			}
+
+			HANDLE f2 = CreateFileA(unpacked_file, GENERIC_WRITE, NULL, NULL, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, NULL);
+
+			printf("%s \n", unpacked_file);
+
+			if ((GetLastError() != ERROR_SUCCESS) && (GetLastError() != ERROR_ALREADY_EXISTS))
+			{
+				printf("File create error: %d (%s)\n", GetLastError(), unpacked_file);
+				CloseHandle(f2);
+				return 1;
+			}
+
+			void* file_data = malloc(hdr.Size);
+			SFPS(file_pos_in_arch);
+			READP(file_data, hdr.Size);
+
+			WRITEP(file_data, hdr.Size);
+
+			CloseHandle(f2);
+			free(file_data);
+
+			READ(hdr); // Next file
+		} 
+
+		printf("Done !!! \n");
 
 	}
 	else
@@ -584,6 +749,32 @@ int Asura_pack(char* folder_name)
 	return EXIT_SUCCESS;
 }
 
+
+
+int Asura_unpack(char* f_name)
+{
+	GetCurrentDirectoryA(260, (LPSTR)g_path);
+	strcpy(g_archive_file_name, f_name);
+
+	HANDLE f = CreateFileA(f_name, GENERIC_READ, NULL, NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
+
+	if (GetLastError() != ERROR_SUCCESS)
+	{
+		printf("File open error: %d\n", GetLastError());
+		CloseHandle(f);
+		return EXIT_FAILURE;
+	}
+
+	char unpacked_folder[260] = { 0 };
+	strcpy(unpacked_folder, g_archive_file_name);
+	strcat(unpacked_folder, "_unpacked\\");
+	TryCreateDirectory(unpacked_folder);
+	
+	Unpack_Asura_arch(f);
+
+	return 0;
+}
+
 void Usage_func()
 {
 	printf("Usage: program [option] [name] \n");
@@ -605,7 +796,8 @@ int main(int argc, char** argv)
 		Usage_func();
 		return 0;
 	}
-		
+	
+	
 
 	if (!strcmp(argv[1], "decompose"))
 	{
@@ -613,11 +805,11 @@ int main(int argc, char** argv)
 	}
 	else if (!strcmp(argv[1], "decompress"))
 	{
-
+		printf("It not implemented yet, use BMS script \n");
 	}
 	else if (!strcmp(argv[1], "unpack"))
 	{
-
+		Asura_unpack(argv[2]);
 	}
 	else if (!strcmp(argv[1], "pack"))
 	{
@@ -633,7 +825,7 @@ int main(int argc, char** argv)
 	}
 
 
-	system("PAUSE");
+	//system("PAUSE");
     return 0;
 }
 
