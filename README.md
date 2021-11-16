@@ -1,6 +1,8 @@
 # Small-utils
 Small utilites that help me in for packing, unpacking, hacking, etc...
 
+### png2bmp
+   Converter utility from png format to bmp format, just4fan
 ### Rsfl-asr
  My own unpacker for asura archives. not complete yet.
 ### CDB-parse
