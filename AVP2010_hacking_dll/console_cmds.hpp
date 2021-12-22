@@ -2,7 +2,25 @@
 #include <vector>
 #include <Windows.h>
 
+//Defines
+#define ORIGINAL_SPAWNER_VTBL_OFFSET 0x52DFE0
+
 // Structs
+struct Vector3f
+{
+	float x;
+	float y;
+	float z;
+};
+
+struct Vector4f
+{
+	float x;
+	float y;
+	float z;
+	float w;
+};
+
 struct __declspec(align(4)) Temp_EI
 {
 	DWORD action_id;
@@ -28,6 +46,72 @@ struct dmg_action
 	DWORD unk_hash;
 	float dmg_amount;
 };
+
+struct Base_entity_mbrs
+{
+	DWORD seq_id;
+	DWORD ent_id;
+	DWORD Flags;
+	DWORD Hash1;
+	DWORD Hash2;
+	DWORD Count;
+	void *pData;
+	DWORD AnotherFlags;
+};
+
+struct Basic_Waypoint_mbrs
+{
+	DWORD some_flags;
+	Vector3f pos;
+	DWORD unk;
+};
+
+struct Basic_Waypoint_with_rot_mbrs
+{
+	DWORD packed_vec4;
+};
+
+struct Spawner_8039_mini_class_mbrs
+{
+	DWORD unk_num;
+	DWORD unk_num2;
+	DWORD unk_num3;
+	float min_time;
+	float max_time;
+	DWORD amt_spawn_allowed;
+	DWORD *p_arr_12b;
+	DWORD id_starting_waypoint;
+	DWORD unk_seq_id_2;
+	float timer;
+	DWORD unk_counter;
+	DWORD amt_something2;
+	DWORD unk7;
+	DWORD *p_arr_4b_seq_ids;
+};
+
+struct Spawner_8039_mini_class
+{
+	DWORD* vtbl2;
+	Spawner_8039_mini_class_mbrs _;
+};
+
+struct Spawner_8039_waypoint_class
+{
+	DWORD* vtbl;
+	Base_entity_mbrs BE;
+	Basic_Waypoint_mbrs Waypoint;
+	Basic_Waypoint_with_rot_mbrs Waypoint_;
+	Spawner_8039_mini_class _;
+};
+
+struct Spawner_8038_spawn_data2 {
+	DWORD seq_id;
+	DWORD class_hash;
+	DWORD subclass_hash;
+	DWORD unk;
+	DWORD unk2;
+};
+
 //Typedefs
 
 typedef int(__cdecl *_PRINTF_CONSOLE)(const wchar_t* fmt, ...);
@@ -35,17 +119,58 @@ typedef bool(__cdecl *_CREATE_CONSOLE_CMD)(const wchar_t* name, DWORD unk, DWORD
 typedef void(__cdecl *_EXECUTE_SMSG)(int, int, float);
 typedef Temp_EI*(__cdecl *_ALLOC_ACT)(__int16, size_t, __int16, void*);
 typedef void(__cdecl *_EXEC_ACT)(Temp_EI*, int, char);
+typedef void* (__thiscall *_SPAWNER_CONSTRUCTOR)(Spawner_8039_waypoint_class*, int);
+typedef DWORD(__thiscall *_SPAWN_FUNC)(Spawner_8039_mini_class*, DWORD, Spawner_8038_spawn_data2*);
 
 //Globals
 _CREATE_CONSOLE_CMD g_create_console_cmd;
 _EXECUTE_SMSG g_exec_smsg;
 _ALLOC_ACT g_allocate_EI;
 _EXEC_ACT g_execute_action;
+_SPAWNER_CONSTRUCTOR g_spawner_constructor;
 
 _PRINTF_CONSOLE g_ingame_printf;
 extern uintptr_t g_engine_base;
+extern bool g_exit;
 
+Spawner_8039_waypoint_class* p_spawner;
 
+Vector3f g_player_pos;
+Vector3f g_player_orient;
+DWORD g_ptr_to_func1 = 0x40000;
+float g_spawn_lenght = 5.0f;
+
+//I just paste it from decompiler
+DWORD hash_from_str(DWORD init, char* str)
+{
+	DWORD result; // eax@1
+	char *v3; // esi@1
+	char i; // cl@2
+	int v5; // edx@7
+	int v6; // eax@7
+
+	result = init;
+	v3 = str;
+	if (str)
+	{
+		for (i = *str; i; result = v5 + v6)
+		{
+			if ((i - 'A') > 0x19u)
+			{
+				if (i == '\\')
+					i = '/';
+			}
+			else
+			{
+				i += 32;
+			}
+			v5 = 31 * result;
+			v6 = i;
+			i = (v3++)[1];
+		}
+	}
+	return result;
+}
 
 void entity_call_action(int act_id, int enti_seq_id, int invoker_seq_id, void* pData, size_t size)
 {
@@ -169,15 +294,249 @@ bool __cdecl dmg_entity(wchar_t *arg, bool no_arg, bool get_description)
 	return 0;
 }
 
-DWORD g_ptr_to_func1 = 0x40000;
+bool recreate_spawner()
+{
+	if (g_spawner_constructor(p_spawner, 999))
+	{
+		printf("spawner created :) addr: %x\n", p_spawner);
+		p_spawner->_._.min_time = 0.0f;
+		p_spawner->_._.max_time = 1.0f;
+		return true;
+	}
+	else
+	{
+		printf("spawner not created :(\n");
+		p_spawner = nullptr;
+		return false;
+	}
+}
 
+// return seq_id
+DWORD call_spawn_8039_entity_func(Vector3f pos, DWORD hash)
+{
+	if (p_spawner)
+	{
+
+		if ((DWORD)p_spawner->vtbl != (g_engine_base + ORIGINAL_SPAWNER_VTBL_OFFSET))
+		{
+			bool res = recreate_spawner();
+			if (!res) return 999;
+		}
+
+		p_spawner->Waypoint.pos = pos;
+		Spawner_8038_spawn_data2 spawn_data;
+		spawn_data.class_hash = 0x766161D2;
+		spawn_data.subclass_hash = hash;
+		spawn_data.seq_id = 999;
+		spawn_data.unk = 999;
+		spawn_data.unk2 = 0;
+
+		DWORD seq_id = ((_SPAWN_FUNC)(*(p_spawner->_.vtbl2 + 3)))(&(p_spawner->_), p_spawner->BE.seq_id, &spawn_data);
+		return seq_id;
+	}
+	return 999;
+}
+
+bool __cdecl set_spawn_lenght(wchar_t *arg, bool no_arg, bool get_description)
+{
+	//printf("I am a test cmd call me to test your injection work properly\n");
+	if (get_description || no_arg)
+	{
+		g_ingame_printf(L"sets spawn lenght\n");
+		return 1;
+	}
+	if (arg)
+	{
+		//g_ingame_printf(L"Arg is %s \n", arg);
+
+		while (iswspace(*arg)) arg++;
+
+		float len;
+
+		if (swscanf_s(arg, L"%f", &len) != 1)
+		{
+			g_ingame_printf(L"Incorrect number?\n");
+			return 0;
+		}
+
+		if (len >= 100.0f || len < 0.5f)
+		{
+			g_ingame_printf(L"Linits is [0.5 .. 100.0]\n");
+			return 0;
+		}
+
+		g_spawn_lenght = len;
+
+		return 1;
+	}
+	return 0;
+}
+
+void refresh_player_pos()
+{
+	//if ((g_engine_base + 0x5E9d60))
+	//{
+	//	if (*(DWORD*)(*(DWORD*)(g_engine_base + 0x5E9d60) + 0xC) == NULL) {
+	//		g_player_pos_addr = nullptr;
+	//		g_player_orient_addr = nullptr;
+	//		return;
+	//	}
+	//
+	//
+	//	g_player_pos_addr = (Vector3f*)(*(DWORD*)(*(DWORD*)(g_engine_base + 0x5E9d60) + 0xC) + 0x60);
+	//	g_player_orient_addr = (Vector3f*)(*(DWORD*)(*(DWORD*)(g_engine_base + 0x5E9d60) + 0xC) + 0x50);
+	//
+	//	printf("player pos: %f %f %f \n", g_player_pos_addr->x, g_player_pos_addr->y, g_player_pos_addr->z);
+	//	return;
+	//}
+
+	//g_player_pos_addr = nullptr;
+	//g_player_orient_addr = nullptr;
+	//return;
+
+	g_player_pos = *(Vector3f*)(g_engine_base + 0x5ff600);
+	Vector4f q = *(Vector4f*)(g_engine_base + 0x5ff60C);
+
+	//not working quaternion magick
+	g_player_orient = { 2 * q.x*q.z - 2 * q.y*q.w, 2 * q.y*q.z + 2 * q.x*q.w, 1 - 2 * (q.x*q.x + q.y*q.y) };
+
+	printf("player pos: %f %f %f \ncosines: %f %f %f \n", g_player_pos.x, g_player_pos.y, g_player_pos.z, 
+		g_player_orient.x, g_player_orient.y, g_player_orient.z);
+
+}
+
+Vector3f get_spawn_position()
+{
+	Vector3f vec = { 0, 0, 0 };
+
+	refresh_player_pos();
+
+	//if (!g_player_pos_addr || !g_player_orient_addr)
+	//	return vec;
+
+	// get player actor pos + looking vector?
+	// no collision check yet
+	Vector3f new_pos = {
+		g_player_pos.x + g_player_orient.x * g_spawn_lenght,
+		g_player_pos.y + g_player_orient.y * g_spawn_lenght,
+		g_player_pos.z + g_player_orient.z * g_spawn_lenght
+	};
+
+	printf("spawn_pos: %f %f %f \n", new_pos.x, new_pos.y, new_pos.z);
+
+	return new_pos;
+}
+
+DWORD actor_hash_from_arg(wchar_t *arg, UINT limit)
+{
+
+	wchar_t *end_p = arg;
+
+	
+	if (*arg == L'\"')
+	{
+		end_p++;
+		while (end_p - arg < limit * sizeof(wchar_t)) { if (*end_p == L'\"') break; end_p++; }
+		char actor_name[256] = { 0 };
+
+		end_p--;
+		
+
+		UINT name_size = end_p - arg;
+		for (int i = 0; i < name_size; i++)
+			actor_name[i] = ((char*)(arg + 1))[2 * i];
+
+		actor_name[name_size] = 0;
+
+		return hash_from_str(0, actor_name);
+	}
+}
+
+bool __cdecl spawn_cmd(wchar_t *arg, bool no_arg, bool get_description)
+{
+	//printf("I am a test cmd call me to test your injection work properly\n");
+	if (get_description || no_arg)
+	{
+		g_ingame_printf(L"Spawn hash(0x12345678) or Spawn ActorName\n");
+		return 1;
+	}
+	if (arg)
+	{
+		g_ingame_printf(L"Arg is %s \n", arg);
+
+		while (iswspace(*arg)) arg++;
+
+		DWORD actor_hash = 0;
+
+		//it is hash?
+		if (*arg == L'0' && *(arg + 1) == L'x')
+		{
+			if (swscanf_s(arg + 2, L"%x", &actor_hash) != 1)
+			{
+				g_ingame_printf(L"Incorrect number?\n");
+				return 0;
+			}
+
+
+		} else if (*arg == L'\"')
+		{
+			actor_hash = actor_hash_from_arg(arg, 256);  
+		} else
+		{
+			g_ingame_printf(L"Incorrect arg\n");
+			return 0;
+		}
+
+		g_ingame_printf(L"Hash: %X\n", actor_hash);
+
+		DWORD seq_id = call_spawn_8039_entity_func(get_spawn_position(), actor_hash);
+		if (seq_id == 999)
+		{
+			g_ingame_printf(L"Not spawned unlucky\n");
+		}
+		else
+		{
+			g_ingame_printf(L"Spawned seq_id = %d\n", seq_id);
+		}
+		return 1;
+	}
+	return 0;
+}
+
+
+
+// must be ingame while injecting?
 bool Init_console()
 {
+
+
+
+	if (!*(unsigned char*)(g_engine_base + 0x666850))
+	{
+		printf("You not in game \n");
+		g_exit = true;
+		return 1;
+	}
+
+	// ultra debugging session for 10hrs required!!!
+
 	g_ingame_printf = (_PRINTF_CONSOLE)(g_engine_base + 0x18A7D0);
 	g_create_console_cmd = (_CREATE_CONSOLE_CMD)(g_engine_base + 0x18C250);
 	g_exec_smsg = (_EXECUTE_SMSG)(g_engine_base + 0x1283B0);
 	g_allocate_EI = (_ALLOC_ACT)(g_engine_base + 0x19D810);
 	g_execute_action = (_EXEC_ACT)(g_engine_base + 0x19E340);
+	g_spawner_constructor = (_SPAWNER_CONSTRUCTOR)(g_engine_base + 0x367b80);
+
+
+	refresh_player_pos();
+	
+
+	p_spawner = (Spawner_8039_waypoint_class*)malloc(sizeof(Spawner_8039_waypoint_class));
+	memset(p_spawner, 0, sizeof(Spawner_8039_waypoint_class));
+
+	recreate_spawner();
+	
+
 	printf("g_ingame_printf found at addr: %x\n", g_ingame_printf);
 	printf("g_create_console_cmd found at addr: %x\n", g_create_console_cmd);
 	printf("g_exec_smsg found at addr: %x\n", g_exec_smsg);
@@ -204,15 +563,32 @@ bool Init_console()
 
 	if (g_create_console_cmd(L"act", 6, (DWORD)(&g_ptr_to_func1), 0, -1))
 	{
-		printf("Succesfull load smsg cmd at addr: %x\n", &entity_call_action_cmd);
+		printf("Succesfull load act cmd at addr: %x\n", &entity_call_action_cmd);
 	}
 
-	g_ptr_to_func1 = (DWORD)&dmg_entity;
+	g_ptr_to_func1 = (DWORD)&spawn_cmd;
 
-	if (g_create_console_cmd(L"dmg_ent", 6, (DWORD)(&dmg_entity), 0, -1))
-	{
-		printf("Succesfull load smsg cmd at addr: %x\n", &dmg_entity);
-	}
+	if(g_create_console_cmd(L"spawn", 6, (DWORD)(&g_ptr_to_func1), 0, -1))
+		printf("Succesfull load spawn cmd at addr: %x\n", &spawn_cmd);
+
+	g_ptr_to_func1 = (DWORD)&set_spawn_lenght;
+
+	if (g_create_console_cmd(L"spawn_set_len", 6, (DWORD)(&g_ptr_to_func1), 0, -1))
+		printf("Succesfull load spawn set len cmd at addr: %x\n", &set_spawn_lenght);
+
+
+	printf("call_spawn_8039_entity_func: %x\n", &call_spawn_8039_entity_func);
+
+	// that crashes.
+
+	//g_ptr_to_func1 = (DWORD)&dmg_entity;
+	//
+	//if (g_create_console_cmd(L"dmg_ent", 6, (DWORD)(&dmg_entity), 0, -1))
+	//{
+	//	printf("Succesfull load smsg cmd at addr: %x\n", &dmg_entity);
+	//}
+
+
 
 	return 0;
 }
