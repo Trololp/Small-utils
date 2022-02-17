@@ -139,6 +139,10 @@ Vector3f g_player_pos;
 Vector3f g_player_orient;
 DWORD g_ptr_to_func1 = 0x40000;
 float g_spawn_lenght = 5.0f;
+bool g_takedmg_toggled = true;
+bool g_useless_variable;
+
+std::vector<DWORD> g_unactive_seq_ids;
 
 //I just paste it from decompiler
 DWORD hash_from_str(DWORD init, char* str)
@@ -301,12 +305,17 @@ bool recreate_spawner()
 		printf("spawner created :) addr: %x\n", p_spawner);
 		p_spawner->_._.min_time = 0.0f;
 		p_spawner->_._.max_time = 1.0f;
+
+		std::vector<DWORD>().swap(g_unactive_seq_ids);
+		//g_unactive_seq_ids.swap()
+
 		return true;
 	}
 	else
 	{
 		printf("spawner not created :(\n");
 		p_spawner = nullptr;
+		std::vector<DWORD>().swap(g_unactive_seq_ids);
 		return false;
 	}
 }
@@ -361,7 +370,7 @@ bool __cdecl set_spawn_lenght(wchar_t *arg, bool no_arg, bool get_description)
 
 		if (len >= 100.0f || len < 0.5f)
 		{
-			g_ingame_printf(L"Linits is [0.5 .. 100.0]\n");
+			g_ingame_printf(L"Limits is [0.5 .. 100.0]\n");
 			return 0;
 		}
 
@@ -398,7 +407,7 @@ void refresh_player_pos()
 	Vector4f q = *(Vector4f*)(g_engine_base + 0x5ff60C);
 
 	//not working quaternion magick
-	g_player_orient = { 2 * q.x*q.z - 2 * q.y*q.w, 2 * q.y*q.z + 2 * q.x*q.w, 1 - 2 * (q.x*q.x + q.y*q.y) };
+	g_player_orient = { -2 * q.x*q.z + 2 * q.y*q.w, -2 * q.y*q.z + 2 * q.x*q.w, -1 + 2 * (q.x*q.x + q.y*q.y) };
 
 	printf("player pos: %f %f %f \ncosines: %f %f %f \n", g_player_pos.x, g_player_pos.y, g_player_pos.z, 
 		g_player_orient.x, g_player_orient.y, g_player_orient.z);
@@ -436,7 +445,7 @@ DWORD actor_hash_from_arg(wchar_t *arg, UINT limit)
 	if (*arg == L'\"')
 	{
 		end_p++;
-		while (end_p - arg < limit * sizeof(wchar_t)) { if (*end_p == L'\"') break; end_p++; }
+		while (end_p - arg < limit) { if (*end_p == L'\"') break; end_p++; }
 		char actor_name[256] = { 0 };
 
 		end_p--;
@@ -503,7 +512,172 @@ bool __cdecl spawn_cmd(wchar_t *arg, bool no_arg, bool get_description)
 	return 0;
 }
 
+bool __cdecl spawn_unactive_cmd(wchar_t *arg, bool no_arg, bool get_description)
+{
+	//printf("I am a test cmd call me to test your injection work properly\n");
+	if (get_description || no_arg)
+	{
+		g_ingame_printf(L"spawn_unactive hash(0x12345678) or spawn_unactive ActorName\n");
+		return 1;
+	}
+	if (arg)
+	{
+		g_ingame_printf(L"Arg is %s \n", arg);
 
+		while (iswspace(*arg)) arg++;
+
+		DWORD actor_hash = 0;
+
+		//it is hash?
+		if (*arg == L'0' && *(arg + 1) == L'x')
+		{
+			if (swscanf_s(arg + 2, L"%x", &actor_hash) != 1)
+			{
+				g_ingame_printf(L"Incorrect number?\n");
+				return 0;
+			}
+
+
+		}
+		else if (*arg == L'\"')
+		{
+			actor_hash = actor_hash_from_arg(arg, 256);
+		}
+		else
+		{
+			g_ingame_printf(L"Incorrect arg\n");
+			return 0;
+		}
+
+		g_ingame_printf(L"Hash: %X\n", actor_hash);
+
+		DWORD seq_id = call_spawn_8039_entity_func(get_spawn_position(), actor_hash);
+		if (seq_id == 999)
+		{
+			g_ingame_printf(L"Not spawned unlucky\n");
+		}
+		else
+		{
+			g_ingame_printf(L"Spawned seq_id = %d\n", seq_id);
+			entity_call_action(4, seq_id, 0, nullptr, 0);
+			g_unactive_seq_ids.push_back(seq_id);
+		}
+		return 1;
+	}
+	return 0;
+}
+
+bool __cdecl spawn_activate_cmd(wchar_t *arg, bool no_arg, bool get_description)
+{
+	//printf("I am a test cmd call me to test your injection work properly\n");
+	if (get_description)
+	{
+		g_ingame_printf(L"spawn_activate");
+		return 1;
+	}
+
+	for (DWORD seq_id : g_unactive_seq_ids)
+	{
+		entity_call_action(3, seq_id, 0, nullptr, 0);
+	}
+
+	std::vector<DWORD>().swap(g_unactive_seq_ids);
+
+	return 1;
+}
+
+bool __cdecl toggle_invincible_cmd(wchar_t *arg, bool no_arg, bool get_description)
+{
+	//printf("I am a test cmd call me to test your injection work properly\n");
+	if (get_description)
+	{
+		g_ingame_printf(L"on/off invincibility");
+		return 1;
+	}
+
+	g_takedmg_toggled = !g_takedmg_toggled;
+
+	g_ingame_printf(L"you now %s\n", g_takedmg_toggled ? L"not invincible" : L"invincible");
+
+	int act_id = 0x26; // toggle can take dmg
+	int seq_id = 10000000; // player have constant id
+
+	entity_call_action(act_id, seq_id, 0, &g_takedmg_toggled, 1);
+
+	return 1;
+}
+
+bool __cdecl toggle_invincible_entity_cmd(wchar_t *arg, bool no_arg, bool get_description)
+{
+	//printf("I am a test cmd call me to test your injection work properly\n");
+	if (get_description)
+	{
+		g_ingame_printf(L"invincible_ent seq_id 1/0");
+		return 1;
+	}
+
+	int toggle = 0;
+	int seq_id = 0;
+	if (swscanf_s(arg, L"%d %d", &seq_id, &toggle) == 2)
+	{
+
+		int act_id = 0x26; // toggle can take dmg
+		g_useless_variable = toggle;
+		entity_call_action(act_id, seq_id, 0, &g_useless_variable, 1);
+
+		return 1;
+	}
+
+	g_ingame_printf(L"Incorrect args\n");
+	return 0;
+}
+
+bool __cdecl attack_entity_cmd(wchar_t *arg, bool no_arg, bool get_description)
+{
+	if (get_description)
+	{
+		g_ingame_printf(L"attack_target seq_id target_seq_id type");
+		return 1;
+	}
+
+	int seq_id = 0;
+	int target_seq_id = 0;
+	int type = 0;
+	if (swscanf_s(arg, L"%d %d %d", &seq_id, &target_seq_id, &type) == 3)
+	{
+
+		int act_id = 0x80E4; // attack action?
+		
+		struct attack_data_struct {
+			DWORD type;
+			DWORD seq_id_target;
+		};
+
+		attack_data_struct* ds = new attack_data_struct;
+
+		ds->seq_id_target = target_seq_id;
+		ds->type = type;
+		
+		entity_call_action(act_id, seq_id, seq_id, ds, 8);
+
+		delete ds;
+
+		return 1;
+	}
+
+	g_ingame_printf(L"Incorrect args\n");
+	return 0;
+}
+
+void make_function(const wchar_t* name, DWORD func_ptr)
+{
+	g_ptr_to_func1 = (DWORD)func_ptr;
+
+	if (g_create_console_cmd(name, 6, (DWORD)(&g_ptr_to_func1), 0, -1))
+	{
+		printf("Succesfull load %ws console command at addr: %x\n", name, func_ptr);
+	}
+}
 
 // must be ingame while injecting?
 bool Init_console()
@@ -545,37 +719,16 @@ bool Init_console()
 
 
 
-	g_ptr_to_func1 = (DWORD)&test_cmd;
-
-	if (g_create_console_cmd(L"Test_command", 6, (DWORD)(&g_ptr_to_func1), 0, -1))
-	{
-		printf("Succesfull load test console command at addr: %x\n", &test_cmd);
-	}
-
-	g_ptr_to_func1 = (DWORD)&call_smsg_cmd;
-
-	if (g_create_console_cmd(L"smsg", 6, (DWORD)(&g_ptr_to_func1), 0, -1))
-	{
-		printf("Succesfull load smsg cmd at addr: %x\n", &call_smsg_cmd);
-	}
-
-	g_ptr_to_func1 = (DWORD)&entity_call_action_cmd;
-
-	if (g_create_console_cmd(L"act", 6, (DWORD)(&g_ptr_to_func1), 0, -1))
-	{
-		printf("Succesfull load act cmd at addr: %x\n", &entity_call_action_cmd);
-	}
-
-	g_ptr_to_func1 = (DWORD)&spawn_cmd;
-
-	if(g_create_console_cmd(L"spawn", 6, (DWORD)(&g_ptr_to_func1), 0, -1))
-		printf("Succesfull load spawn cmd at addr: %x\n", &spawn_cmd);
-
-	g_ptr_to_func1 = (DWORD)&set_spawn_lenght;
-
-	if (g_create_console_cmd(L"spawn_set_len", 6, (DWORD)(&g_ptr_to_func1), 0, -1))
-		printf("Succesfull load spawn set len cmd at addr: %x\n", &set_spawn_lenght);
-
+	make_function(L"Test_command", (DWORD)&test_cmd);
+	make_function(L"smsg", (DWORD)&call_smsg_cmd);
+	make_function(L"act", (DWORD)&entity_call_action_cmd);
+	make_function(L"spawn", (DWORD)&spawn_cmd);
+	make_function(L"spawn_set_len", (DWORD)&set_spawn_lenght);
+	make_function(L"spawn_unactive", (DWORD)&spawn_unactive_cmd);
+	make_function(L"spawn_activate", (DWORD)&spawn_activate_cmd);
+	make_function(L"invincible", (DWORD)&toggle_invincible_cmd);
+	make_function(L"invincible_ent", (DWORD)&toggle_invincible_entity_cmd);
+	make_function(L"attack_target", (DWORD)&attack_entity_cmd);
 
 	printf("call_spawn_8039_entity_func: %x\n", &call_spawn_8039_entity_func);
 
