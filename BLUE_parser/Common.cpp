@@ -108,6 +108,12 @@ void write_padded_str_f(char* str, HANDLE f2)
 	HANDLE f = f2;
 	DWORD a = 0;
 	//UINT file_addr = SFPC(0);
+
+	if (!str) {
+		WRITEP("\0\xFF\xFF\0", 4);
+		return;
+	}
+
 	size_t str_len = strlen(str);
 
 	WRITEP(str, str_len);

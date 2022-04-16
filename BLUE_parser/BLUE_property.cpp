@@ -17,6 +17,35 @@ BLUE_property::BLUE_property()
 {
 }
 
+BLUE_property::BLUE_property(BLUE_property_type prop_type, DWORD name_hash, char* name)
+{
+	m_property_name_hash = name_hash;
+	m_property_name = name;
+	m_type = prop_type;
+
+
+	switch (prop_type) {
+	case BLUE_PROPERTY_FLOAT:
+		m_float_val = 0.0f;
+		break;
+	case BLUE_PROPERTY_BOOL:
+		m_bool_val = false;
+		break;
+	case BLUE_PROPERTY_STR:
+		m_str_val = nullptr;
+		m_str_val_hash = 0;
+		m_str_val_hash2 = 0;
+		break;
+	case BLUE_PROPERTY_INT:
+		m_int_val = 0;
+		break;
+	case BLUE_PROPERTY_BLOB:
+	default:
+		printf("not supported (%d)\n", m_type);
+		break;
+	}
+}
+
 char* BLUE_property::BLUE_read_str_field(HANDLE f)
 {
 	DWORD a = 0;
@@ -38,12 +67,6 @@ char* BLUE_property::BLUE_read_str_field(HANDLE f)
 		{
 			return str_copy(str_p);
 		}
-		else
-		{
-			char dichka[16] = { 0 };
-			sprintf(dichka, "%08x", m_str_val_hash2);
-			return str_copy(dichka);
-		}
 	}
 
 	return result;
@@ -56,7 +79,8 @@ void BLUE_property::BLUE_write_str_field(HANDLE f2)
 	WRITE(m_str_val_hash2); // after "." symbol
 	WRITE(m_str_val_hash);
 
-	if(m_str_val) write_padded_str_f(m_str_val, f2);
+	if (!m_str_val_hash) return;
+	write_padded_str_f(m_str_val, f2);
 }
 
 void * BLUE_property::BLUE_read_blob_field(HANDLE f)
@@ -83,7 +107,9 @@ void BLUE_property::BLUE_write_blob_field(HANDLE f2)
 	WRITE(m_blob_size);
 	if (m_blob_size) {
 		WRITEP(m_blob_val, m_blob_size);
-		WRITEP("\0\0\0\0", 4 - SFPC(0) % 4);
+
+		DWORD file_pos = SFPC(0);
+		WRITEP("\0\0\0\0", -(int)file_pos & 3);
 	}
 }
 
@@ -125,6 +151,19 @@ bool BLUE_property::BLUE_set_value_str(char * str, char* second_str)
 	}
 }
 
+bool BLUE_property::BLUE_set_value_str(DWORD hash1, DWORD hash2)
+{
+	if (m_type != BLUE_PROPERTY_STR) {
+		printf("this property is not string type ! \n");
+		return false;
+	}
+
+	m_str_val = nullptr;
+	m_str_val_hash = hash1;
+	m_str_val_hash2 = hash2;
+	return true;
+}
+
 bool BLUE_property::BLUE_set_value_float(float new_v)
 {
 	if (m_type != BLUE_PROPERTY_FLOAT) {
@@ -148,9 +187,9 @@ bool BLUE_property::BLUE_set_value_bool(bool new_v)
 	return true;
 }
 
-bool BLUE_property::BLUE_set_value_default(DWORD new_v)
+bool BLUE_property::BLUE_set_value_int(DWORD new_v)
 {
-	if (m_type != BLUE_PROPERTY_DEFAULT) {
+	if (m_type != BLUE_PROPERTY_INT) {
 		printf("this property is not default type ! \n");
 		return false;
 	}
@@ -162,7 +201,7 @@ bool BLUE_property::BLUE_set_value_default(DWORD new_v)
 
 void BLUE_property::Print_property()
 {
-	printf("Property %s (%08x) \n", m_property_name, m_property_name_hash);
+	printf("Property %s (%08x) \n", m_property_name ? m_property_name : "", m_property_name_hash);
 
 	switch (m_type)
 	{
@@ -179,10 +218,11 @@ void BLUE_property::Print_property()
 		printf("type: blob, size = %d \n", m_blob_size);
 		Dump_hex(m_blob_val, m_blob_size);
 		break;
-	case BLUE_PROPERTY_DEFAULT:
-		printf("type: float, value = %d \n", m_default_val);
+	case BLUE_PROPERTY_INT:
+		printf("type: int, value = %d \n", m_int_val);
 		break;
 	default:
+		printf("type: unknown (%d), value = %d \n", m_type, m_default_val);
 		break;
 	}
 }
@@ -209,6 +249,9 @@ bool BLUE_property::BLUE_store_property(HANDLE f2, DWORD type)
 	case 8:
 		switch (m_type)
 		{
+		case BLUE_PROPERTY_INT:
+			WRITE(m_int_val);
+			break;
 		case BLUE_PROPERTY_FLOAT:
 			WRITE(m_float_val);
 			break;
@@ -222,7 +265,6 @@ bool BLUE_property::BLUE_store_property(HANDLE f2, DWORD type)
 			BLUE_write_blob_field(f2);
 			break;
 		default:
-			m_type = BLUE_PROPERTY_DEFAULT;
 			WRITE(m_default_val);
 			break;
 		}
@@ -231,6 +273,9 @@ bool BLUE_property::BLUE_store_property(HANDLE f2, DWORD type)
 	case 6:
 		switch (m_type)
 		{
+		case BLUE_PROPERTY_INT:
+			WRITE(m_int_val);
+			break;
 		case BLUE_PROPERTY_FLOAT:
 			WRITE(m_float_val);
 			break;
@@ -241,7 +286,6 @@ bool BLUE_property::BLUE_store_property(HANDLE f2, DWORD type)
 			BLUE_write_str_field(f2);
 			break;
 		default:
-			m_type = BLUE_PROPERTY_DEFAULT;
 			WRITE(m_default_val);
 			break;
 		}
@@ -276,6 +320,9 @@ BLUE_property::BLUE_property(HANDLE f, DWORD type)
 	case 8:
 		switch (m_type)
 		{
+		case BLUE_PROPERTY_INT:
+			READ(m_int_val);
+			break;
 		case BLUE_PROPERTY_FLOAT:
 			READ(m_float_val);
 			break;
@@ -289,7 +336,7 @@ BLUE_property::BLUE_property(HANDLE f, DWORD type)
 			m_blob_val = BLUE_read_blob_field(f);
 			break;
 		default:
-			m_type = BLUE_PROPERTY_DEFAULT;
+			//m_type = BLUE_PROPERTY_INT;
 			READ(m_default_val);
 			break;
 		}
@@ -298,6 +345,9 @@ BLUE_property::BLUE_property(HANDLE f, DWORD type)
 	case 6:
 		switch (m_type)
 		{
+		case BLUE_PROPERTY_INT:
+			READ(m_int_val);
+			break;
 		case BLUE_PROPERTY_FLOAT:
 			READ(m_float_val);
 			break;
@@ -308,49 +358,13 @@ BLUE_property::BLUE_property(HANDLE f, DWORD type)
 			m_str_val = BLUE_read_str_field(f);
 			break;
 		default:
-			m_type = BLUE_PROPERTY_DEFAULT;
+			//m_type = BLUE_PROPERTY_DEFAULT;
 			READ(m_default_val);
 			break;
 		}
 		break;
 	case 5:
 		printf("subclass type 5 not supported !\n");
-
-		/*
-		for (DWORD i = 0; i < m_type; i++)
-		{
-			DWORD some_type;
-			READ(some_type);
-			switch (some_type)
-			{
-			case BLUE_PROPERTY_FLOAT:
-				float val;
-				READ(val);
-				printf("(value : %f) \n", val);
-				break;
-			case BLUE_PROPERTY_BOOL:
-				BYTE val2;
-				READ(val2);
-				if (val2)
-				{
-					printf("(value : True ) \n");
-				}
-				else
-				{
-					printf("(value : False) \n");
-				}
-				break;
-			case BLUE_PROPERTY_STR:
-				Read_str_val_type_3(f, 1);
-				break;
-			default:
-				DWORD val4;
-				READ(val4);
-				printf("((default branch) value : %08x) \n", val4);
-				break;
-			}
-		}
-		*/
 		break;
 	default:
 		printf("subclass type %d not supported !\n", type);
@@ -376,6 +390,15 @@ BLUE_property::~BLUE_property()
 
 BLUE_subclass::BLUE_subclass()
 {
+}
+
+BLUE_subclass::BLUE_subclass(DWORD parent_hash, DWORD class_name_hash, char * class_name)
+{
+	m_subclass_name = class_name;
+	m_subclass_name_hash = class_name_hash;
+	m_unk = m_subclass_name_hash; // idk
+	m_type = 8;
+	m_parent_name_hash = parent_hash;
 }
 
 BLUE_subclass::BLUE_subclass(HANDLE f)
@@ -436,23 +459,40 @@ BLUE_property * BLUE_subclass::Get_property(char * name)
 	return nullptr;
 }
 
+bool BLUE_subclass::Add_property(BLUE_property * new_prop)
+{
+	m_properties.push_back(new_prop);
+	return true;
+}
+
+bool BLUE_subclass::Delete_property(DWORD hash)
+{
+	for (auto prop_p : m_properties) {
+		if (prop_p->m_property_name_hash == hash) {
+			prop_p->m_bDeleted = true;
+			return true;
+		}
+	}
+	return false;
+}
+
 void BLUE_subclass::BLUE_subclass_store(HANDLE f2)
 {
 	DWORD a = 0;
-	DWORD no_str_marker = 0x00FFFF00;
 	WRITE(m_subclass_name_hash);
 	WRITE(m_type);
 	WRITE(m_unk);
 	WRITE(m_parent_name_hash);
 
-	if (m_subclass_name) { write_padded_str_f(m_subclass_name, f2); }
-	else { WRITE(no_str_marker); }
+	write_padded_str_f(m_subclass_name, f2);
+
 
 	DWORD prop_cnt = m_properties.size();
 	WRITE(prop_cnt);
 
 	for (auto prop_p : m_properties) {
-		prop_p->BLUE_store_property(f2, m_type);
+		if(!prop_p->m_bDeleted)
+			prop_p->BLUE_store_property(f2, m_type);
 	}
 }
 
@@ -550,6 +590,23 @@ BLUE_subclass * BLUE_file::Get_subclass(DWORD hash)
 	return nullptr;
 }
 
+bool BLUE_file::Delete_class(DWORD hash)
+{
+	for (auto sub_cls : m_subclasses) {
+		if (sub_cls->m_subclass_name_hash == hash) {
+			sub_cls->m_bDeleted = true;
+			return true;
+		}
+	}
+	return false;
+}
+
+bool BLUE_file::Add_class(BLUE_subclass * new_class)
+{
+	m_subclasses.push_back(new_class);
+	return true;
+}
+
 void BLUE_file::BLUE_file_store(HANDLE f2)
 {
 	DWORD a = 0;
@@ -571,16 +628,16 @@ void BLUE_file::BLUE_file_store(HANDLE f2)
 	WRITE(cnt_subclass);
 
 	for (auto p_subclass : m_subclasses) {
-		p_subclass->BLUE_subclass_store(f2);
+		if(!p_subclass->m_bDeleted)
+			p_subclass->BLUE_subclass_store(f2);
 	}
 
 	dw = 0;
 	WRITE(dw);
 
 	HANDLE f = f2;
-	size_t file_end = SFPC(0);
-
-	WRITEP("\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0", 16 - file_end & 15);
+	//size_t file_end = SFPC(0);
+	//WRITEP("\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0", 16 - file_end & 15);
 
 	size_t file_size = SFPC(0);
 
