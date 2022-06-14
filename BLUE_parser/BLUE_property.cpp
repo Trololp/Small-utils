@@ -508,7 +508,11 @@ BLUE_file::BLUE_file(HANDLE f)
 	DWORD a = 0;
 	SFPS(0);
 	asura_hdr file_hdr;
-	READ(file_hdr);
+	READ(file_hdr.magic);
+	READ(file_hdr.file_size);
+	READ(file_hdr.type1);
+	READ(file_hdr.type2);
+	//READ(file_hdr);
 
 	if (file_hdr.magic != 'EULB')
 	{

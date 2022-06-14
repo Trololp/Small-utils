@@ -6,6 +6,8 @@
 
 std::map<DWORD, char*> g_hashs;
 
+bool g_file_is_BE = false;
+
 #define SwapFourBytes(data)   \
 ( (((data) >> 24) & 0x000000FF) | (((data) >>  8) & 0x0000FF00) | \
   (((data) <<  8) & 0x00FF0000) | (((data) << 24) & 0xFF000000) ) 
@@ -55,6 +57,80 @@ void Dump_hex(void* data, unsigned int count)
 			printf("%s \n", g_dump_hex_line);
 		}
 	}
+}
+
+bool set_file_state_BE(bool isBE)
+{
+	g_file_is_BE = isBE;
+	return g_file_is_BE;
+}
+
+int readf(HANDLE f, void * pval, size_t size, DWORD* bytesReaden) {
+	int ret_v = 0;
+	DWORD a = 0;
+
+	if (!g_file_is_BE) {
+		int ret_v = READPLE(pval, size);
+	}
+	else {
+		if (size == 8) {
+			DWORD val[2];
+			int ret_v = READPLE(val, 8);
+			DWORD val_a = val[0];
+			DWORD val_b = val[1];
+			__asm {
+				mov eax, val_a
+				bswap eax
+				mov val_a, eax
+			}
+			val[1] = val_a;
+			__asm {
+				mov eax, val_b
+				bswap eax
+				mov val_b, eax
+			}
+			val[0] = val_b;
+			*(DWORD*)pval = val[0];
+			*((DWORD*)pval + 1) = val[1];
+		}
+		else if (size == 4) {
+			DWORD val;
+			int ret_v = READLE(val);
+			__asm {
+				mov eax, val
+				bswap eax
+				mov val, eax
+			}
+			*(DWORD*)pval = val;
+
+		}
+		else if (size == 2) {
+			WORD val;
+			int ret_v = READLE(val);
+			val = (val & 0xFF00) >> 8 + (val & 0xFF) << 8;
+			*(WORD*)pval = val;
+		}
+		else {
+			int ret_v = READPLE(pval, size);
+		}
+	}
+
+	if (bytesReaden)
+		*bytesReaden = a;
+
+	return ret_v;
+}
+
+int readpf(HANDLE f, void * p, size_t size, DWORD* bytesReaden)
+{
+	DWORD a = 0;
+
+	int ret_v = READPLE(p, size);
+
+	if (bytesReaden)
+		*bytesReaden = a;
+
+	return ret_v;
 }
 
 
@@ -244,3 +320,4 @@ char * str_to_lower(char * str)
 	return str_p;
 
 }
+
