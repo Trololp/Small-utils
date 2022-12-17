@@ -47,6 +47,11 @@ struct dmg_action
 	float dmg_amount;
 };
 
+struct to_node_msg_struct {
+	DWORD unk;
+	DWORD node_id;
+};
+
 struct Base_entity_mbrs
 {
 	DWORD seq_id;
@@ -586,44 +591,64 @@ bool __cdecl spawn_activate_cmd(wchar_t *arg, bool no_arg, bool get_description)
 	return 1;
 }
 
-bool __cdecl toggle_invincible_cmd(wchar_t *arg, bool no_arg, bool get_description)
+
+
+bool __cdecl node_tp_cmd(wchar_t *arg, bool no_arg, bool get_description)
 {
-	//printf("I am a test cmd call me to test your injection work properly\n");
 	if (get_description)
 	{
-		g_ingame_printf(L"on/off invincibility");
+		g_ingame_printf(L"node_tp target_id node_id");
 		return 1;
 	}
 
-	g_takedmg_toggled = !g_takedmg_toggled;
+	int target_id = 0;
+	int node_id = 0;
+	if (swscanf_s(arg, L"%d %d", &target_id, &node_id) == 2)
+	{
 
-	g_ingame_printf(L"you now %s\n", g_takedmg_toggled ? L"not invincible" : L"invincible");
+		int act_id = 105; // ASURA_MSG_AXON_GS2_TELEPORT_TO_NODE
+		
 
-	int act_id = 0x26; // toggle can take dmg
-	int seq_id = 10000000; // player have constant id
 
-	entity_call_action(act_id, seq_id, 0, &g_takedmg_toggled, 1);
+		to_node_msg_struct* msg_data = new to_node_msg_struct;
+		msg_data->unk = 0;
+		msg_data->node_id = node_id;
 
-	return 1;
+		entity_call_action(act_id, target_id, 0, msg_data, sizeof(to_node_msg_struct));
+
+		delete msg_data;
+
+		return 1;
+	}
+
+	g_ingame_printf(L"Incorrect args\n");
+	return 0;
 }
 
-bool __cdecl toggle_invincible_entity_cmd(wchar_t *arg, bool no_arg, bool get_description)
+bool __cdecl node_pathfind_cmd(wchar_t *arg, bool no_arg, bool get_description)
 {
-	//printf("I am a test cmd call me to test your injection work properly\n");
 	if (get_description)
 	{
-		g_ingame_printf(L"invincible_ent seq_id 1/0");
+		g_ingame_printf(L"node_pathfind target_id node_id");
 		return 1;
 	}
 
-	int toggle = 0;
-	int seq_id = 0;
-	if (swscanf_s(arg, L"%d %d", &seq_id, &toggle) == 2)
+	int target_id = 0;
+	int node_id = 0;
+	if (swscanf_s(arg, L"%d %d", &target_id, &node_id) == 2)
 	{
 
-		int act_id = 0x26; // toggle can take dmg
-		g_useless_variable = toggle;
-		entity_call_action(act_id, seq_id, 0, &g_useless_variable, 1);
+		int act_id = 58; // ASURA_MSG_AXON_GS2_PATHFIND_TO_NODE
+
+
+
+		to_node_msg_struct* msg_data = new to_node_msg_struct;
+		msg_data->unk = 0;
+		msg_data->node_id = node_id;
+
+		entity_call_action(act_id, target_id, 0, msg_data, sizeof(to_node_msg_struct));
+
+		delete msg_data;
 
 		return 1;
 	}
@@ -636,7 +661,7 @@ bool __cdecl attack_entity_cmd(wchar_t *arg, bool no_arg, bool get_description)
 {
 	if (get_description)
 	{
-		g_ingame_printf(L"attack_target seq_id target_seq_id type");
+		g_ingame_printf(L"melee_start seq_id target_seq_id type");
 		return 1;
 	}
 
@@ -662,6 +687,78 @@ bool __cdecl attack_entity_cmd(wchar_t *arg, bool no_arg, bool get_description)
 
 		delete ds;
 
+		return 1;
+	}
+
+	g_ingame_printf(L"Incorrect args\n");
+	return 0;
+}
+
+bool __cdecl start_move_cmd(wchar_t *arg, bool no_arg, bool get_description)
+{
+	if (get_description)
+	{
+		g_ingame_printf(L"move_start seq_id hash");
+		return 1;
+	}
+	if (arg)
+	{
+		g_ingame_printf(L"Arg is %s \n", arg);
+		int Target_ent_GUID = 0;
+
+		if (swscanf_s(arg, L"%d ", &Target_ent_GUID) != 1) {
+			g_ingame_printf(L"Incorrect args\n");
+			return 0;
+		}
+
+		DWORD move_hash = 0;
+
+		while (iswspace(*arg)) arg++;
+		while (isalnum(*arg)) arg++;
+		while (iswspace(*arg)) arg++; // skipping first argument
+
+		//it is hash?
+		if (*arg == L'0' && *(arg + 1) == L'x')
+		{
+			if (swscanf_s(arg + 2, L"%x", &move_hash) != 1)
+			{
+				g_ingame_printf(L"Incorrect number?\n");
+				return 0;
+			}
+
+
+		}
+		else if (*arg == L'\"')
+		{
+			move_hash = actor_hash_from_arg(arg, 256);
+		}
+		else
+		{
+			g_ingame_printf(L"Incorrect arg\n");
+			return 0;
+		}
+
+		g_ingame_printf(L"Hash: %X\n", move_hash);
+
+		int act_id = 0xA9; // ASURA_MSG_MOVE_START
+
+		struct Asura_Msg_Move
+		{
+			unsigned int m_uID;
+			unsigned __int16 m_usAsuraFlags;
+			unsigned __int16 m_usProjectFlags;
+			DWORD unk;
+			DWORD unk2;
+		};
+
+		Asura_Msg_Move* ds = new Asura_Msg_Move;
+
+		ZeroMemory(ds, sizeof(Asura_Msg_Move));
+		ds->m_uID = move_hash;
+
+		entity_call_action(act_id, Target_ent_GUID, Target_ent_GUID, ds, sizeof(Asura_Msg_Move));
+
+		delete ds;
 		return 1;
 	}
 
@@ -726,9 +823,10 @@ bool Init_console()
 	make_function(L"spawn_set_len", (DWORD)&set_spawn_lenght);
 	make_function(L"spawn_unactive", (DWORD)&spawn_unactive_cmd);
 	make_function(L"spawn_activate", (DWORD)&spawn_activate_cmd);
-	make_function(L"invincible", (DWORD)&toggle_invincible_cmd);
-	make_function(L"invincible_ent", (DWORD)&toggle_invincible_entity_cmd);
-	make_function(L"attack_target", (DWORD)&attack_entity_cmd);
+	make_function(L"melee_start", (DWORD)&attack_entity_cmd);
+	make_function(L"move_start", (DWORD)&start_move_cmd);
+	make_function(L"node_tp", (DWORD)&node_tp_cmd);
+	make_function(L"node_pathfind", (DWORD)&node_pathfind_cmd);
 
 	printf("call_spawn_8039_entity_func: %x\n", &call_spawn_8039_entity_func);
 
