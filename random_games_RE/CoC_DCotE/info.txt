@@ -1,0 +1,7 @@
+
+Call of Cthulhu - The Dark Corners of the Earth
+horror/scifi game, about H. P. Lovecraft stories
+
+.xdb - pack files
+
+PHYS - map collision geometry

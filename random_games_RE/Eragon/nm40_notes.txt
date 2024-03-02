@@ -1,0 +1,59 @@
+
+// NM40 is container
+// constain other files with header PCRD
+
+4b // magic NM40
+2b // type? 1 or 2
+2b // zero 
+
+2b // 0x24 amt 
+...
+4b // 0x34 offset to array of entries header 
+
+//8b long entries amt is in 0x24 offset (word)
+8b entry1 {
+2b idk 
+2b amount entry2 
+4b offset to entry2 table
+}
+ 
+// array of entries contain pointers to PCRD headers 
+// entry is 16b 
+// after PCRD header may appear this entry 
+
+struct entry2 {
+4b // maybe type? always 4
+2b // len byte array 
+2b // idk
+4b // pointer to byte array 
+4b // pointer to PCRD 
+}
+
+// PCRD
+// header is 0x30 bytes long?
+// some bytes array before lenght is in entry 
+4b // PCRD
+4b // 2
+4b // 
+4b // index amt
+4b // vertex amt 
+4b // offset indexes
+4b // offset vertex
+4b //
+4b // 
+4b // 
+4b //
+4b //
+
+// indexes is 16bit value
+
+// vertex is 0x34 bytes 
+
+struct vertex{
+3f // pos
+1f //
+4f //
+4b // 4 bytes 
+2f // UV
+8b // zeros
+}

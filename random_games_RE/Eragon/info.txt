@@ -1,0 +1,114 @@
+Eragon game 
+
+Game about Eragon book series.
+
+
+.wad - is a package file
+.pcw - contain world geometry?
+
+.nm40 - models? unclear. I get main characters models from this files
+models oddly segmented, no prop files.
+
+Debug stuff...
+Place a Config.txt near game exectutable, and game will scan 
+for specific commands in that file.
+// Comments
+DISABLE_FMV 1  // Disable FMVs
+LEVEL CaRazac // Load specific level, camera is broken...
+
+INVULNERABLE 1// not work for me...
+DIFFICULTY 0 // from 0 to 3
+long_button_name_test 1// every menu label will be in test mode 
+DRAW_CONTROL_BOUNDS 1// in menu buttons will have visible bounds
+
+// others variables or commands I not investigated
+COMBAT_TRACE
+ASPECT_RATIO
+infinite_far_clipping_plane
+use_flight_sim_style_controls
+NUM_PLAYER_PADS
+NUM_PLAYER_PER_PAD
+CINE_VIDCAP
+BOOT
+CLEAR_COLOR
+DEFAULT_CONFIG
+SHIPPING_BOOT
+CAP_30FPS
+draw_game_state_info
+respawnid
+DISABLE_ATTRACT_MODE
+USER
+STATE_TRACE
+VID_CAPTURE
+VID_NAME
+VID_RENDER
+timeline
+file_led
+play_timer
+file_telemetry
+LOAD_THROTTLE
+KEYBOARD_AS_JOYSTICK
+HACK_FOR_TRAILER
+DRAW_WORLD_HUD
+draw_transform_nodes
+SOFT_FOCUS
+
+Intresting...
+Object ID - Name
+0 	ClScriptObj
+1 	ClCharacterObj
+2 	ClEragonObj
+3 	ClBromObj
+4 	ClMurtaghObj
+5 	ClDoughDragonObj
+6 	ClDoughDragonFlyingObj
+7 	ClDoughDragonPerchedObj
+8 	ClSoldierCommanderObj
+9 	ClRazacObj
+0Ah ClSiegeEngineObj
+0Bh ClDurzaObj
+0Ch ClDurzaBeastObj
+0Dh ClDancingSwordObj
+0Eh ClPropObj
+0Fh ClWeaponObj
+10h ClCinematicObj
+12h ClObjectiveObj
+13h ClTargetObj
+14h ClCoverObj
+15h ClFleeObj
+16h ClAiScriptObj
+17h ClGroupAiScriptObj
+18h ClCameraObj
+19h ClSpawnerObj
+1Bh ClBarrierDoorwayObj
+1Ah ClBarrierObj
+1Ch ClSimMeshObj
+1Dh ClSimulationObj
+1Eh ClClothSimObj
+1Fh ClSaphiraStrafingObj
+20h ClParticlePlacementObj
+21h ClIntancedCharacterObj
+22h	ClWickObj
+23h	ClStrikableScriptObj
+24h	ClTeleportTargetObj
+25h	ClStaticPropObj
+26h	ClWorldPropObj
+27h	ClNoamPropObj
+28h	ClAnimPropObj
+29h	ClHeldPropObj
+2Ah	ClCubicFlightPathObj
+2Bh	ClDragonFlightPathObj
+2Ch	ClFlightPathNodeObj
+2Dh	ClFlightPathBaseNodeObj
+2Eh	ClFlightPathTriggerNodeObj
+2Fh	ClFlightPathAutonomousObj
+30h	ClRaChaseHudObj
+31h	ClTallyObj
+32h	ClVaUrgHudObj
+33h	ClHealthMeterObj
+34h	ClAryaHudObj
+35h	ClRaTrapHudObj
+36h	ClPlayerTargetableObj
+37h	ClCounterObj
+38h	ClDovePowerUpObj
+39h	ClPropDamageManagerObj

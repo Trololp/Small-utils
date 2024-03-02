@@ -1,0 +1,38 @@
+
+
+4b // magick 'wad\0'
+4b // platform 'pc\0\0'
+4b // version number int 1
+4b // File size int 
+4b // File size int 
+4b unk 
+4b unk 
+4b amt // number of files in wad 
+4b // number of files in wad? 
+4b // unk 0x2C
+4b // start value in entries 
+some table {
+	4b // int 
+	4b // int 
+} amt entries 
+file table 
+{
+	4b align_factor?
+	4b chunk_size
+	4b offset_in_file
+	4b unk //  0
+} amt entries 
+
+
+
+
+// Aligned 0x1000? data chunks
+// first chunk at 0x1000
+0x1000  PCIM
+0x6000  PCIM
+0xB000  PCIM
+0x10000 PCIM
+0x15000 PCIM 
+0x1A000 PCIM
+0x1D700 AMP
+
