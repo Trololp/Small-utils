@@ -1,6 +1,10 @@
 # Small-utils
 Small utilites that help me in for packing, unpacking, hacking, etc...
 
+### tetris_asm
+   almost working tetris written on assembly (game logic) for linux.
+   require libSDL2, nasm.
+
 ### png2bmp
    Converter utility from png format to bmp format, just4fan
 ### Rsfl-asr
