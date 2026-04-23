@@ -1,0 +1,77 @@
+
+vfsx_header
+
+struct vfsx_entry {
+    char tag[2]; // "D!" is directory, "F!" is file
+    u16 name_len; // including /x00 symbol
+    u32 offset_in_pfs; // offset in .pfs file for vfs_entry struct
+    char name[name_len];
+};
+
+struct vfsx_header {
+    u32 magic_val; // "VFSX"
+    u32 val1; // 01
+    u32 val2; // 01
+    vfsx_entry* p_first_entry; // after the header (0x10)
+};
+
+vfs_header
+
+import type.magic;
+
+
+struct vfs_entry {
+    char tag[2];
+    u16 unk; // some id
+    u8 *self : u32;
+    if(tag == "D!") {
+        u8 *p_next_directory : u32;
+        u8 *p_first_file : u32;
+        u16 file_amount;
+        u16 name_size;
+        char name[name_size];
+    }else if (tag == "F!") {
+        u8 *p_next_file : u32;
+        u8 *p_data : u32;
+        u32 size_decompressed;
+        u16 compression_type; // 01 == none, 02 PKWARE compression
+        u16 name_size;
+        u32 size_compressed;
+        u32 crc_prob;
+        char name[name_size];
+    }
+};
+
+struct vfs_header {
+    type::Magic<"VFS!"> magic;
+    u32 val1;
+    u32 val2;
+    vfs_entry *p_first_entry : u32;
+    vfs_entry *p_entry : u32;
+    u32 f_size;
+};
+
+vfs_header hdr @ $;
+vfs_entry e1 @ 0x095A9371;
+
+
+vfs_class
+
+0x0 char* vfs file name
+
+0x208 char* gamedata folder path
+0x30C char* copy of gamedata folder path
+0x410 char* vfi file name ptr
+0x414 vfs header (size 0x18)
+
+0x424 vfs_header.offset
+
+0x42C
+0x430 void* list_names?
+0x434 u32 list_names size
+0x438 prob_file_op_classes (size 0xC)
+0x43C no compression ops
+0x440 with compression ops
+
+0x444 list?
+0x448 list?
